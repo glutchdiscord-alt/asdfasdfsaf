@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle, PermissionFlagsBits, Options } = require('discord.js');
+const { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
 const { Pool } = require('@neondatabase/serverless');
 const { drizzle } = require('drizzle-orm/neon-serverless');
 const { pgTable, text, timestamp, integer, boolean, json } = require('drizzle-orm/pg-core');
@@ -265,7 +265,7 @@ class DatabaseStorage {
 
 const storage = new DatabaseStorage();
 
-// Discord client setup with maximum performance optimizations
+// Discord client setup optimized for production hosting
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -273,36 +273,18 @@ const client = new Client({
     ],
     sweepers: {
         messages: {
-            interval: 30, // More frequent cleanup
-            lifetime: 900, // Shorter lifetime for memory efficiency
+            interval: 60,
+            lifetime: 1800,
         },
         users: {
-            interval: 30,
+            interval: 60,
             filter: () => user => user.bot && user.id !== client.user.id,
-        },
-        guildMembers: {
-            interval: 30,
-            filter: () => member => member.partial
-        },
-        presences: {
-            interval: 30,
-            filter: () => () => true // Clear all presences
         }
     },
-    makeCache: Options.cacheWithLimits({
-        MessageManager: 0, // Disable message caching
-        PresenceManager: 0, // Disable presence caching
-        VoiceStateManager: 100, // Limit voice state cache
-        GuildMemberManager: 200, // Limit member cache
-        UserManager: 100 // Limit user cache
-    }),
     allowedMentions: {
         parse: ['users'],
         repliedUser: false
-    },
-    partials: [], // No partials needed for our use case
-    restTimeOffset: 50, // Optimize REST timing
-    restRequestTimeout: 5000 // Faster timeout for REST requests
+    }
 });
 
 // Optimized in-memory caches with performance monitoring
