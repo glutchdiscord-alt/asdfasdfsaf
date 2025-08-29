@@ -10,15 +10,12 @@ const WebSocket = require('ws');
 // WebSocket polyfill for Neon database
 global.WebSocket = WebSocket;
 
-// Database configuration optimized for maximum performance with Neon
+// Database configuration for Neon PostgreSQL
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    max: 5, // Optimized for better performance
-    min: 1, // Keep minimum connections alive
-    idleTimeoutMillis: 60000, // Increased for better connection reuse
-    connectionTimeoutMillis: 10000, // Reduced for faster failures
-    maxUses: 100, // Prevent connection leaks
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+    max: 3, // Conservative for hosting limits
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 15000
 });
 
 // Health check server for Render
@@ -91,11 +88,12 @@ async function ensureDatabaseTables(retryCount = 0) {
         console.log('🔧 Checking database connection and tables...');
         
         // Test database connection first with retry logic
-        await pool.query('SELECT 1');
+        const client = await pool.connect();
+        await client.query('SELECT 1');
         console.log('✅ Database connection verified');
         
         // Create tables if they don't exist (safe for deployment)
-        await pool.query(`
+        await client.query(`
             CREATE TABLE IF NOT EXISTS lfg_sessions (
                 id TEXT PRIMARY KEY,
                 creator_id TEXT NOT NULL,
@@ -118,7 +116,7 @@ async function ensureDatabaseTables(retryCount = 0) {
             );
         `);
         
-        await pool.query(`
+        await client.query(`
             CREATE TABLE IF NOT EXISTS guild_settings (
                 guild_id TEXT PRIMARY KEY,
                 lfg_channel_id TEXT,
@@ -127,7 +125,7 @@ async function ensureDatabaseTables(retryCount = 0) {
             );
         `);
         
-        await pool.query(`
+        await client.query(`
             CREATE TABLE IF NOT EXISTS user_sessions (
                 user_id TEXT PRIMARY KEY,
                 session_id TEXT NOT NULL,
@@ -136,19 +134,22 @@ async function ensureDatabaseTables(retryCount = 0) {
             );
         `);
         
+        client.release();
         console.log('✅ Database tables verified/created successfully');
     } catch (error) {
         console.error('❌ Database setup failed:', error);
         console.error('🔍 Check your DATABASE_URL environment variable');
         
-        // Retry logic for Render hosting (connection issues are common during startup)
-        if (retryCount < 5 && (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || error.message.includes('terminating'))) {
-            console.log(`🔄 Retrying database setup (attempt ${retryCount + 1}/5) in 3 seconds...`);
-            await new Promise(resolve => setTimeout(resolve, 3000));
+        // Retry logic for production hosting
+        if (retryCount < 3) {
+            console.log(`🔄 Retrying database setup (attempt ${retryCount + 1}/3) in 5 seconds...`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
             return ensureDatabaseTables(retryCount + 1);
         }
         
-        throw error;
+        // If all retries fail, log the error but don't crash the bot
+        console.error('❌ Database setup failed after all retries. Bot will continue without database.');
+        return;
     }
 }
 
